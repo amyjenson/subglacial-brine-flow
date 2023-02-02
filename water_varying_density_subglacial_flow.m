@@ -1,4 +1,4 @@
-function output = temp_FullNyeFowler(RunInfo, varargin)
+function output = water_varying_density_subglacial_flow(RunInfo, varargin)
 
 %
 %
@@ -9,24 +9,19 @@ function output = temp_FullNyeFowler(RunInfo, varargin)
 %%                                                                                          %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %  
-% Function can be called by DIC_RunningNyeFowlerCode.m  
-%
-%
-% exitflag = 1       model reached the end of the run succesfully
-% exitflag = NaN     model didnt reach t=T but dont know what happened, exitflag not defined again after model setupWholeDays = NaN;
+% Function can be called by run_water_varying_density_subglacial_flow.m  
 %
 % Written by J. Kingslake, 2011, Department of Geography, University of
 % Sheffield, UK.
-% Edited by A. Jenson, 2022, Department of Mathematics, Montana State
-% University, Bozeman, MT
-
+% Edited by A. Jenson, 2022, Geophysical Institute, University of Alaska
+% Fairbanks, US. 
 
 % parse model input
 InitialLakeDepthDim = RunInfo.InitialLakeDepthDim; % initial lake depth, set so that ice at bottom of the dam is at flotation
 plots = RunInfo.plots; % just specify which plots to display while this is running
 PlotFreq = RunInfo.PlotPeriod; % how frequently to plot model output while the simulation is running
 InitialrGuess = RunInfo.InitialrGuess; % initial radius
-Initialbeta_psu = RunInfo.Initialbeta_psu;                                                                           
+Initialbeta_psu = RunInfo.Initialbeta_psu;                                                                          
 VLi = RunInfo.VLi;
 s0 = RunInfo.s0;
 channel_geometry = RunInfo.channel_geometry;
@@ -34,11 +29,10 @@ slope_degrees = RunInfo.slope;               % slope of bed in degrees (range be
 IceThickness = RunInfo.ice_thickness;
 
 hLi = InitialLakeDepthDim; 
-Slope = slope_degrees*pi/180;   % slope of conduit bottom in radians 
+Slope = slope_degrees*pi/180;                            % slope of conduit bottom in radians 
 InitialSGuess = pi*(InitialrGuess)^2;          % this is dimensional cross-sectional area
 pL = 1;                                        % 1 means box-shaped lake, 2 means wedge, 3 means cone;   
 
-%%%%%%%%%%%%%%%%%%%%%%%
 Q_old = NaN;  %defining discharge for previous time step
 hL_old = NaN; % defining lake depth for previous time step
 P = 1;
@@ -60,6 +54,7 @@ PeakTimeSecs = NaN;
 PeakYearFrac = NaN;
 Highstand = NaN;
 Lowstand = NaN;
+LakeEffectivePressureError = 0;
 
 global paused
 paused=0;
@@ -69,6 +64,7 @@ exitflag = NaN;
 %%%%%% MODEL PHYSICAL PARAMETERS %%%%%%%%%%%%
 g=9.81;                                             % acceleration due to gravity
 rho_i = 917;                                        % density of ice [kg m^-3]
+rho_w = 997;                                      	% density of water
 L = 3.34e5;                                          % latent heat of fusion of water [J kg^-1]
 ni = 0.0600;                                        % roughness of ice wall   [m^-1/3 s]
 nb = 0.1629;                                        % roughness of bed material   [m^-1/3 s]
@@ -85,74 +81,26 @@ n_full = ni * 0.611;                               % roughness of channel when f
 f = 5.4 * n_full^2;                                % friction factor for a circular channel    
 end
 
-
 %Initial properties of brine
 
-% initial density of brine as function of salinity
-Initialrho_b  = (9.9780*10^(-10)*Initialbeta_psu^3 + 5.5328*10^(-08)*Initialbeta_psu^2 + 7.6346*10^(-04)*Initialbeta_psu + 9.9984*10^(-01))*(1000); % density of brine kg/m^3
+% find initial density of brine 
+rho_b  = (9.0273*10^(-10)*Initialbeta_psu^3 + 3.4163*10^(-08)*Initialbeta_psu^2 + 7.6273*10^(-04)*Initialbeta_psu + 1.0030)*(1000); % density of brine kg/m^3
 
-% Convert psu to kg/m^3
-Initialbeta = Initialbeta_psu*Initialrho_b/1000; % beta in kg/m^3 
-
-%%%%%%%%%%%% this is for testing brine density!!!
-%Initialrho_b  = 1000;
-%%%%%%%%%%%%%%%%
-
-Pi = g*rho_i*IceThickness;                           % function for ice-overburden pressure in N/m^2 or Pa 
-p = Pi/100000;                                       % pressure in bars
-
-
-% melting point of ice as function of salinity
-theta_hat_salinity = -5.8202*10^(-07)*(Initialbeta_psu)^3 + 1.8653*10^(-06)*Initialbeta_psu^2 + -6.0536*10^(-02)*Initialbeta_psu + 2.5195*10^(-03);
-
-% melting point of ice as function of pressure 
-theta_hat_pressure = - 1.7628*10^(-26)*p^3 - 1.5226*10^(-16)*p^2 - 7.4477*10^(-8)*p + 1.1645*10^(-2); 
-
-% melting point of ice as function of salinity and pressure 
-Initialtheta_hat = theta_hat_salinity + theta_hat_pressure;
-
-theta_b = Initialtheta_hat; 
-theta_i = Initialtheta_hat;
-theta0 = Initialtheta_hat;
+P = g*rho_i*IceThickness;                           % function for ice-overburden pressure in N/m^2 or Pa 
+p = P/100000;                                       % pressure in bars
 
 %calculate flow law parameters/factors
 n = 3;                                              % glens flow law exponent
-A0 = 3.5*10^(-25);
-R = 8.314;                                  % parameter needed for calculating A
-T = theta_b + 273.15 + 7*10^(-8)*Pi;
-T_star = 263 + 7*10^(-8);
-
-% use constant A if near melting point
-if theta_b >= 0
-    A = 24*10^(-25);
-elseif ((-10 + Pi*7*10^(-8))<theta_b) && (theta_b <0)
-    Q = 115;
-    A = A0*exp((-Q/R)*(1/T - 1/T_star));
-elseif theta_b < (-10 + Pi*7*10^(-8))
-    Q = 6*10^4;
-    A = A0*exp((-Q/R)*(1/T - 1/T_star));
-end
-
+A = 24*10^(-25);
 K = 2* A* n^(-n);                                   % ice flow constant from Evatt (2006)
-
-sigma_i = 2093; %J/kg C
-
-% %calculate specific heat of brine
-  
-     % specific heat of water (no salinity) under no pressure at temperature J kg^(-1)K^(-1)
-     sigma_w = 4217.4-3.720283*theta_b+0.1412855*theta_b^2-2.654387*10^(-3)*theta_b^3+2.093236*10^(-5)*theta_b^4;       
- 
-     % specific heat of saline fluid under no pressure at temperature t in J kg^(-1)K^(-1)
-     Initialsigma_b = sigma_w+Initialbeta_psu*(-7.6444+0.107276*theta_b-1.3839*10^(-3)*theta_b^2)...
-    +Initialbeta_psu^(3/2)*(0.17709-4.0772*10^(-3)*theta_b+5.3539*10^(-5)*theta_b^2);
 
 
 % Dimensional model scaling parameters
-hL0  = hLi;                      % lake depth scale [m] also flotation level
+hL0  = hLi*rho_i/rho_b;                             % lake depth scale [m] also flotation level
 VL0  = (hL0/hLi)^pL * VLi;                          % lake volume scale [m^3]
-QR0   = 10;                                        % discharge scale [m^3 s^-1]
-psi0 = Initialrho_b*g*sin(Slope);                   % potential gradient scale   
-SR0  = (f*Initialrho_b*g*QR0^2/psi0)^(3/8);        % area of channel scale [m^2]
+QR0   = 10;                                         % discharge scale [m^3 s^-1]
+psi0 = rho_b*g*sin(Slope);                           % potential gradient scale 
+SR0  = (f*rho_b*g*QR0^2/psi0)^(3/8);                % area of channel scale [m^2]
 m0   = psi0*QR0/L;                                  % melting of walls scale
 t0   = rho_i*SR0/m0;                                % time scale [s]
 N0   = (K * t0) ^(-1/3);                            % effective pressure scale [NR m^-2]
@@ -163,32 +111,21 @@ elseif channel_geometry ==1/2
     hr0  = sqrt((InitialSGuess/SR0)/(2*pi));                              % channel roof height scale [m]
 end 
 
-if Initialbeta_psu==0
-    beta0=1;
-else
-    beta0 = Initialbeta;   % brine concentration scale [kg m^(-3)]
-end
 
-% dimensionless parameters of model              
-zeta = t0 * hLi^pL * QR0/( pL * VLi * hL0^pL);
+% dimensionless parameters of model                
+zeta = t0*hLi^pL*QR0/(pL*VLi*hL0^pL);
 delta = N0/(s0*psi0);
-gamma = theta0*sigma_i/L; 
-lambda = SR0 *s0 / (t0 * QR0);
-%%for SR formulation
-InitialLambda = (Initialrho_b*Initialsigma_b*theta0)/(rho_i*L);
-%%for QR formulation
-%InitialLambda = (Initialrho_b*Initialsigma_b*theta0)/(psi0);
 
 %%%%%%%%%%%%%%% SET UP TIME %%%%%%%%%%%%
 
 % set up space grid
 S_end = 1;
-ds = 1/10;                                          % space step    usually 0.01
+ds= 1/50;                                           % space step
 s = 0:ds:S_end;                                     % space vector
 Ls = length(s);                                     % number of space steps
 
-dt = ds/1000;                                 % time step default 0.01 (0.01 in Kingslake)
-T = 500;                                            % dimensionless simulation time default 500
+dt= ds/(100000/s0);                                 % time step default 0.01 (0.01 in Kingslake)
+T = 100;                                            % dimensionless simulation time default 500
 t=0:dt:T;                                           % time vector
 Lt = length(t);                                     % number of time steps
 TSamp = t(1:10:Lt);                                 % set up a sampling time vector
@@ -206,13 +143,6 @@ QRendSamp  = zeros(length(TSamp),1);                % array for sampling values 
 QRSamp = NaN(length(TSamp),Ls);                     % array for sampling values of the channel discharge profile
 SRSamp = NaN(length(TSamp),Ls);                     % array for sampling values of the channel area profile
 NRSamp = NaN(length(TSamp),Ls);  
-betaSamp = NaN(length(TSamp),Ls);                 % array for sampling values of the brine concentration
-beta_psuSamp = NaN(length(TSamp),Ls);              % array for sampling values
-theta_hatSamp = NaN(length(TSamp),Ls);             % array for sampling values of the salinity-dependent melting point of ice
-rho_bSamp = NaN(length(TSamp),Ls);                  % array for sampling values
-sigma_bSamp = NaN(length(TSamp),Ls);                % array for sampling values
-LambdaSamp = NaN(length(TSamp),Ls);
-delta_thetaSamp = NaN(length(TSamp),Ls);               
 
 disp('Done')
 
@@ -225,12 +155,7 @@ hr = zeros(2,Ls);                                   % channel roof height [m]
 SR = zeros(2,Ls);                                   % channel cross-section
 NR = zeros(2,Ls);                                   % channel effective pressure
 QR  = zeros(2,Ls);                                  % discharge in channel  [m^3 s^-1]
-beta = zeros(2, Ls);                                % brine concentration
-beta_psu = zeros(2,Ls); 
-theta_hat = zeros(2,Ls);                            % salinity-dependent melting point  
-sigma_b = zeros(2, Ls);
-Lambda = zeros(2,Ls);
-delta_theta = zeros(2, Ls);
+
 
 disp('Done')
 
@@ -244,9 +169,10 @@ SpinUpFin = 1;
 disp('Starting Initial Conditions...')
 
 %%% define hydraulic potential
-psi = Initialrho_b*g*sin(Slope)/psi0;         % idealised dimensionless hydraulic gradient
+psi = rho_b*g*sin(Slope)/psi0;         % idealised dimensionless hydraulic gradient
 
 SR_temp(1,:) = ones(1,Ls).*(InitialSGuess/SR0);
+
 hL(1,1) = InitialLakeDepthDim/hL0;
 
 % Define N at top end
@@ -255,14 +181,10 @@ NR(1,1) = NL;
 %define N at bottom
 NBottom = 0;
 NR(1,Ls) = NBottom;
+%QR_temp = SR_temp(1,:).^(4/3);
 
-beta_temp(1,:) = ones(1,Ls).*(Initialbeta/beta0);                  % this defines the IC for beta
-beta_psu_temp(1,1:Ls) = ones(1,Ls).*(Initialbeta_psu);
-theta_hat_temp(1,:) = ones(1,Ls).*(Initialtheta_hat/theta0);     
-rho_b_temp(1,:)= ones(1,Ls).*Initialrho_b;
-sigma_b_temp(1,:) = ones(1, Ls).*Initialsigma_b;
-Lambda_temp(1,:) = ones(1,Ls)*InitialLambda;
-delta_theta_temp(1,:) = ones(1, Ls).*0;
+ 
+%QR_temp = SR_temp(1,:).^(4/3);
 
  % Boundary Layer Method in section 2.2.5 of Kingslake (2013)
         % initial conditions
@@ -279,24 +201,18 @@ delta_theta_temp(1,:) = ones(1, Ls).*0;
 %           for k = 1:Ls-1
 %               NR_temp(1,k+1) = NR_temp(1,k) + ds/delta * ( QR_temp(1,k)*abs(QR_temp(1,k))/(SR_temp(1,k).^(8/3)) - psi);
 %           end
-   
-disp('...')
+ 
 
+disp('...')
+% SR_temp = QR_temp.^(3/4);
+% end
 
 QR(1,:) = QR_temp;
 NR(1,:) = NR_temp;
 SR(1,:) = SR_temp;
-beta(1,:) = beta_temp;
-beta_psu(1,:) = beta_psu_temp;
-theta_hat(1,:) = theta_hat_temp;
-theta_hat(2,:) = theta_hat_temp;
-rho_b(1,:)= rho_b_temp;
-sigma_b(1,:) = sigma_b_temp;
-Lambda(1,:) = Lambda_temp;
-delta_theta(1,:) = delta_theta_temp;
+
 
 disp('Done')
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%% MAIN LOOP %%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -304,28 +220,15 @@ disp('Starting Main Loop...')
 
 for i = 2:Lt
 
-    
-%%% define hydraulic potential
-psi = rho_b(1,:)*g*sin(Slope)/psi0;         % idealised dimensionless hydraulic gradient
-
-
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %%%% Step Channel Crossection Forward %%%%
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% update the R channel cross-sectional area
+    % update the R channel cross-sectional area
 
-    %SR(2,:) = SR(1,:)+ dt*(abs((QR(1,:).^3)) ./ ((SR(1,:).^(8/3)).*(1+gamma.*(theta_hat(1,:) - theta_i/theta0))) - SR(1,:).*(NR(1,:)).^3);
-
-
-%when using the SR formulation
-     SR(2,:) = SR(1,:)+ dt *(((abs((QR(1,:).^3)) ./ (SR(1,:).^(8/3))) - (Lambda(1,:).*SR(1,:).*(delta_theta(1,:))))./(1+gamma.*(theta_hat(1,:) - theta_i/theta0))) - SR(1,:).*(NR(1,:)).^3;
-
-%when using the QR formulation
-     %SR(2,:) = SR(1,:)+ dt *(((abs((QR(1,:).^3)) ./ (SR(1,:).^(8/3))) - (Lambda(1,:).*QR(1,:).*(delta_theta(1,:))))./(1+gamma.*(theta_hat(1,:) - theta_i/theta0))) - SR(1,:).*(NR(1,:)).^3;
-
+    SR(2,:) = SR(1,:)+ dt * (abs((QR(1,:).^3)) ./((SR(1,:).^(8/3))) - SR(1,:).*(NR(1,:)).^3);
 
     if any(SR(2,:)<=0)
-        disp 'SR has gone to zero - reducing the time step may help this'
+        disp 'SR has gone to zero - reducing the time step or increasing the lake input Qin can help to prevent this.'
         
         ChannelClosed = 1;
         return
@@ -334,12 +237,13 @@ psi = rho_b(1,:)*g*sin(Slope)/psi0;         % idealised dimensionless hydraulic 
 
 % calculate non-dimensional channel height from this
     if channel_geometry ==1
-        hr(2,:) = 2*sqrt(SR(2,:)/pi); %channel height = diameter
+        hr(2,:) = 2*sqrt(SR(2,:)/pi);
     elseif channel_geometry==1/2
-        hr(2,:) = sqrt(SR(2,:)/(2*pi)); % channel height = radius
+        hr(2,:) = sqrt(SR(2,:)/(2*pi));
     end
 
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %%%% Step Lake and lake effective pressure forward %%%%
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -363,7 +267,8 @@ NL = 0;
     %%%% Find NR and QR which fit this channel shape and BC's %%%%
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-     % Boundary Layer Method        
+
+     % Boundary Layer Method
 
             QR(2,:) = sqrt(psi*(SR(2,Ls)^(8/3)));
 
@@ -377,70 +282,16 @@ NL = 0;
                NR(2,Ls) = NR(2,Ls-1);
 
              for k = 1:Ls-1
-                 NR(2,k+1) = NR(2,k) + ds/delta * (QR(2,k)*abs(QR(2,k))/(SR(2,k).^(8/3)) - psi(k));
+                 NR(2,k+1) = NR(2,k) + ds/delta * (QR(2,k)*abs(QR(2,k))/(SR(2,k).^(8/3)) - psi);
              end
     
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-           %%%% Find beta which fit BC's %%%%
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
     
-    % Upwind difference scheme to solve brine equation 
-    
-        % define boundary condition at the lake 
-       beta(2,1)= Initialbeta/beta0;
-   
-       beta(2,2:Ls) = beta(1,2:Ls) - dt*((beta(1,2:Ls) ./ SR(2,2:Ls)).* ((SR(2,2:Ls) - SR(1,2:Ls))/dt) ...
-              + (QR(2,2:Ls)./(lambda * SR(2,2:Ls))).*((beta(1,2:Ls)-beta(1,1:Ls-1))/ds));
-       
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   
-    %convert brine from kg/m^3 to psu 
-    beta_psu(2,:) = ((beta(2,:)*beta0)*1000./rho_b(1,:));      % psu  - Rutishauser (140-160 psu)    dimensional!                                                     
-    
-    
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-           %%%% Find new salinity-dependent melting point %%%%
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    
-    % melting point of ice as function of salinity and pressure 
-    theta_hat(2,:) =  (theta_hat_pressure + (-5.8202*10^(-07)*(beta_psu(2,:)).^3 + 1.8653*10^(-06)*(beta_psu(2,:)).^2 - 6.0536*10^(-2)*(beta_psu(2,:)) + 2.5195*10^(-3)))/theta0;
-    
-    %when using SR formulation
-    delta_theta(2,:) = (theta_hat(2,:)-theta_hat(1,:))/dt;
-    %when using QR formulation
-    %delta_theta(2,:) = (theta_hat(2,:)-theta_hat(1,:));
-
-    % density of brine as function of salinity and pressure 
-    rho_b(2,:)  = (9.9780*10^(-10)*beta_psu(2,:).^3 + 5.5328*10^(-08)*beta_psu(2,:).^2 + 7.6346*10^(-04)*beta_psu(2,:) + 9.9984*10^(-01))*(1000); % density of brine kg/m^3
-
-    %%%%%%%%%%%%%%%%% this is for testing denisty!!!
-    %rho_b(2,:) = 1000;
-     %%%%%%%%%%%%%%%%
-
-% specific heat of saline fluid under no pressure at temperature t in J kg^(-1)K^(-1)
-     sigma_b(2,:) = sigma_w+beta_psu(2,:).*(-7.6444+0.107276.*theta_b-1.3839*10^(-3)*theta_b.^2)...
-     +beta_psu(2,:).^(3/2).*(0.17709-4.0772*10^(-3)*theta_b+5.3539*10^(-5)*theta_b.^2);
- 
-
-%update model parameters that contain properties of brine:                          
-
-% dimensionless parameters of model 
-    %when using SR formulation
-      Lambda(2,:) = (rho_b(2,:).*sigma_b(2,:)*theta0)/(rho_i*L);
-    %when using QR formulation
-      %Lambda(2,:) = (rho_b(2,:).*sigma_b(2,:)*theta0)/(psi0);
-
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %%%%%%%%%%%%% Plotting %%%%%%%%%%
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
     if rem(i,PlotFreq)==0
-        
-%         ddsQ_ext = (QR(2,2:end) - QR(2,1:end-1))/ds;   
-%   if nnz(ddsQ_ext<0)~=0
-%       pause(0.001)
-%   end
         
         
         
@@ -489,7 +340,7 @@ NL = 0;
             plot(s*s0,QR(2,:)*QR0,'b')
 
             title 'Discharge Along-Channel Profiles'
-            pause(0.0001)
+            pause(0.000001)
         end
         
         % effective pressure profile
@@ -499,7 +350,7 @@ NL = 0;
             plot(s*s0,NR(2,:)*N0,'b')
             %       axis([0 1 -3 1])
             title 'Effective Pressure Along-Channel Profiles'
-            pause(0.0001)
+            pause(0.000001)
         end
         % QR time series
         if nnz(plots==3)~=0
@@ -508,7 +359,7 @@ NL = 0;
             hold on
             plot(tDays(i),QR(2,1)*QR0,'.r','MarkerSize',5)
             title 'QR time series (at lake)'
-            pause(0.001)
+           pause(0.000001)
         end
         % SR along channel profile 
         if nnz(plots==4)~=0
@@ -519,7 +370,7 @@ NL = 0;
             %             hold on
             %             plot(s,SC(2,:)*SC0,'r')
             title 'SR Along-Channel Profiles '
-            pause(0.001)
+            pause(0.000001)
         end
         
         % NR time series at terminus
@@ -531,9 +382,8 @@ NL = 0;
             plot(tDays(i),NR(2,end)*N0,'r.')
             end
             title 'N at the terminus'
-            pause(0.00001)
+           pause(0.000001)
         end
-
         %  Time series of the minumum area of the channel
         if nnz(plots==6)~=0
             if ishandle(6) ==0; figure(6);set(6,'WindowButtonDownFcn',@PauseSim);end
@@ -543,7 +393,7 @@ NL = 0;
             plot(tDays(i),min(SR(2,:)*SR0),'r.')
             end
             title ' Time series of the minumum area of the channel, min(SR)'
-            pause(0.00001)
+            pause(0.000001)
         end
         % Along-channel profile of disharge and effective pressure together
         % (QR, NR and QC and NC profiles)
@@ -557,7 +407,7 @@ NL = 0;
 %             set(Line2,'Color','b')
             axis([0 s0 -0.1 1])
             title 'Profiles of Q and N'
-            pause(0.0001)
+            pause(0.000001)
         end
         % 3D phase-space plot of lake depth, discharge at the lake and channel crossectional are at the lake (useful!)  
         % QR-hL-SR 3d phase space
@@ -570,7 +420,7 @@ NL = 0;
             ylabel QR
             zlabel SR
             grid on
-            pause(0.00001)
+            pause(0.000001)
         end
         % Rate of change of discharge at the lake, dQR/dt
         if nnz(plots==9)~=0
@@ -581,7 +431,7 @@ NL = 0;
             plot(t(i),((QR(2,1)-QR(1,1))*QR0)/(tDays(i)-tDays(i-1)),'r.')
             end
             title 'dQR/dt'
-            pause(0.00001)
+           pause(0.000001)
         end
         
 % Along-channel profile of disharge, effective pressure and discharge together
@@ -591,8 +441,9 @@ NL = 0;
             plot(s*s0,NR(2,:)*N0,'r',s*s0,SR(2,:)*SR0,s*s0,QR(2,:)*QR0)          
             title 'NR, SR and QR profiles'
             hold off
-            pause(0.00001)
+            pause(0.000001)
         end
+
      %   Rate of change of discharge with lake hieght, dQR/dh 
         if nnz(plots==11)~=0
             if ishandle(11) ==0; figure(11);set(11,'WindowButtonDownFcn',@PauseSim);end
@@ -600,7 +451,7 @@ NL = 0;
             hold on
             plot(t(i),((QR(2,1)-QR(1,1))*QR0)/((hL(2,1)-hL(1,1))*hL0),'r.')
             title 'dQR/dh'
-            pause(0.00001)
+            pause(0.000001)
         end
  
         % Channel radius profile
@@ -610,7 +461,7 @@ NL = 0;
             hold off
             plot(s,sqrt(SR(2,:)*SR0/pi)) 
             title 'Channel radius profile'
-            pause(0.00001)
+          pause(0.000001)
         end
         % Time series of lake input, Qin(t)
         if nnz(plots==13)~=0
@@ -619,7 +470,7 @@ NL = 0;
             hold on
             plot(t(i),Qin(i),'*')
             title 'Time series of Lake Input (Qin)'
-            pause(0.00001)
+            pause(0.000001)
         end
         
         
@@ -630,7 +481,7 @@ NL = 0;
             plot(s*s0,beta_psu(2,1:Ls),'o')
             %       axis([0 1 -3 1])
             title 'Brine concentration along-channel profile'
-            pause(0.0001)
+           pause(0.000001)
         end
  
          % melting point profile
@@ -638,10 +489,9 @@ NL = 0;
             if ishandle(15) ==0; figure(15);set(15,'WindowButtonDownFcn',@PauseSim);end
             set(0,'CurrentFigure',15)
             plot(s*s0,theta_hat(2,1:Ls)*theta0,'b')
-            %plot(s*s0,delta_theta(2,1:Ls)*theta0,'b')
             %       axis([0 1 -3 1])
             title 'Ice-brine interface melting point along channel'
-            pause(0.0001)
+            pause(0.000001)
         end
         
              % Average Velocity along channel profile 
@@ -653,7 +503,7 @@ NL = 0;
             %             hold on
             %             plot(s,SC(2,:)*SC0,'r')
             title 'Average Velocity Along-Channel Profiles '
-            pause(0.001)
+            pause(0.000001)
         end
 
 
@@ -671,13 +521,6 @@ NL = 0;
         QRSamp(SampNumber,:) = QR(2,:);
         SRSamp(SampNumber,:) = SR(2,:);
         NRSamp(SampNumber,:) = NR(2,:);
-        betaSamp(SampNumber,:) = beta(2,:);
-        theta_hatSamp(SampNumber,:) = theta_hat(2,:);
-        beta_psuSamp(SampNumber,:) = beta_psu(2,:);
-        rho_bSamp(SampNumber,:) = rho_b(2,:);
-        sigma_bSamp(SampNumber,:) = sigma_b(2,:);
-        LambdaSamp(SampNumber,:) = Lambda(2,:);
-        delta_thetaSamp(SampNumber,:) = delta_theta(2,:);
 
         SampNumber = SampNumber + 1;
 
@@ -736,6 +579,8 @@ if Converged
 
 end
 
+
+
 %%% create output variable %%%
 
 output.QR0 = QR0;
@@ -752,13 +597,6 @@ output.SR = SRSamp;
 output.hrLake = hrLakeSamp;
 output.hr0 = hr0;
 output.Ls = Ls;
-output.beta0 = beta0;
-output.beta = betaSamp;
-output.beta_psu = beta_psuSamp;
-output.theta_hat = theta_hatSamp;
-output.theta0 = theta0;
-output.rho_b = rho_bSamp;
-output.sigma_b = sigma_bSamp;
 output.T = TSamp;
 output.TDays = TDays;
 output.t0 = t0;
@@ -768,6 +606,7 @@ output.ds = ds;
 output.s = s;
 output.NR = NRSamp;
 output.N0 = N0;
+output.rho_b = rho_b;
 
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -780,13 +619,6 @@ output.N0 = N0;
     SR(1,:)  = SR(2,:);
     QR(1,:) = QR(2,:);
     NR(1,:) = NR(2,:);
-    beta(1,:) = beta(2,:);
-    theta_hat(1,:) = theta_hat(2,:);
-    beta_psu(1,:) = beta_psu(2,:);
-    rho_b(1,:) = rho_b(2,:);
-    sigma_b(1,:) = sigma_b(2,:);
-    Lambda(1,:) = Lambda(2,:);
-    delta_theta(1,:) = delta_theta(2,:);
 
     % wipe old values
     hL(2,1) = 0;
@@ -794,18 +626,19 @@ output.N0 = N0;
     SR(2,:)  = 0;
     QR(2,:) = 0;
     NR(2,:) = 0;
-    beta(2,:) = 0;
-    theta_hat(2,:) = 0;
-    beta_psu(2,:) = 0;
-    rho_b(2,:) = 0;
-    sigma_b(2,:) = 0; 
-    delta_theta(2,:) = 0;
-    Lambda(2,:) = 0;
 
     %%%%%%%%%%%%%%%%%%%%
     %%%  PAUSE CODE  %%%
     %%%%%%%%%%%%%%%%%%%%
 
+    if paused ==true
+        for l=1:inf
+            if paused ==false
+                break
+            end
+            pause(0.01)
+        end
+    end
 
     if UserReturn == 1
         button = questdlg('Return?');
