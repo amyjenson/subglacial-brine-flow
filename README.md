@@ -1,4 +1,4 @@
-# subglacial_brine_flow
+# subglacial-brine-flow
 We adapted a subglacial hydrology model to account for saline fluid below the pressure melting point. 
 
 The main model is called subglacial_brine_flow.m and is run by run_subglacial_brine_flow.m. 
