@@ -38,11 +38,11 @@ hL_old = NaN; % defining lake depth for previous time step
 P = 1;
 Llo = 1;  
 Lhi = 1;
-if ishandle(999) ==0
-    figure(999);
-    text(0.3,0.5,'Control-click to end simulation','FontSize',18)
-    set(999,'WindowButtonDownFcn',@EndRun);
-end
+% if ishandle(999) ==0
+%     figure(999);
+%     text(0.3,0.5,'Control-click to end simulation','FontSize',18)
+%     set(999,'WindowButtonDownFcn',@EndRun);
+% end
 
 global UserReturn
 UserReturn = 0;
@@ -94,11 +94,10 @@ n = 3;                                              % glens flow law exponent
 A = 24*10^(-25);
 K = 2* A* n^(-n);                                   % ice flow constant from Evatt (2006)
 
-
 % Dimensional model scaling parameters
-hL0  = hLi*rho_i/rho_b;                             % lake depth scale [m] also flotation level
+hL0  = hLi;                                         % lake depth scale [m] also flotation level
 VL0  = (hL0/hLi)^pL * VLi;                          % lake volume scale [m^3]
-QR0   = 10;                                         % discharge scale [m^3 s^-1]
+QR0  = VLi/(10^5);                                         % discharge scale [m^3 s^-1]
 psi0 = rho_b*g*sin(Slope);                           % potential gradient scale 
 SR0  = (f*rho_b*g*QR0^2/psi0)^(3/8);                % area of channel scale [m^2]
 m0   = psi0*QR0/L;                                  % melting of walls scale
@@ -124,14 +123,13 @@ ds= 1/50;                                           % space step
 s = 0:ds:S_end;                                     % space vector
 Ls = length(s);                                     % number of space steps
 
-dt= ds/(100000/s0);                                 % time step default 0.01 (0.01 in Kingslake)
+dt= ds/1000;                                        % time step default 0.01 (0.01 in Kingslake)
 T = 100;                                            % dimensionless simulation time default 500
 t=0:dt:T;                                           % time vector
 Lt = length(t);                                     % number of time steps
 TSamp = t(1:10:Lt);                                 % set up a sampling time vector
 TDays =TSamp*t0/3600/24;
 tDays = t*t0/3600/24;
-
 
 %%%%%%%%%%% PREALLOCATE ARRAYS %%%%%%%%
 disp('Pre-allocating Sampling Arrays....')
@@ -178,39 +176,32 @@ hL(1,1) = InitialLakeDepthDim/hL0;
 % Define N at top end
 NL = 0; %BC for effective pressure at lake
 NR(1,1) = NL;
-%define N at bottom
-NBottom = 0;
-NR(1,Ls) = NBottom;
-%QR_temp = SR_temp(1,:).^(4/3);
-
- 
-%QR_temp = SR_temp(1,:).^(4/3);
 
  % Boundary Layer Method in section 2.2.5 of Kingslake (2013)
         % initial conditions
-
         % S at far end of channel fixes Q there
         QR_temp(1,Ls) = sqrt((SR_temp(1,Ls)^(8/3))*psi);
         % fixes Q for the whole channel
         QR_temp(1,:) = QR_temp(1,Ls);
         
-        %NR_temp = NR(1,1)*(1-s./1);
-        %NR_temp(1:Ls) = NBottom;    
-         NR_temp = NR(1,1);
- 
-%           for k = 1:Ls-1
-%               NR_temp(1,k+1) = NR_temp(1,k) + ds/delta * ( QR_temp(1,k)*abs(QR_temp(1,k))/(SR_temp(1,k).^(8/3)) - psi);
-%           end
- 
+
+   % initial N guess is important!      
+        %NR_temp = NR(1,1);
+        %NR_temp(1,:) = ones(1,Ls)*NL;
+        %NR_temp(1:1) = NR(1,1);
+        %for neumann BC at end of channel 
+        %NR_temp(1,Ls) = NR_temp(1,Ls-1);
+        %NR_temp = (1+s./1);
+        NR_temp = -s;
+           %for k = 1:Ls-1
+           %    NR_temp(1,k+1) = NR_temp(1,k) + ds/delta * ( QR_temp(1,k)*abs(QR_temp(1,k))/(SR_temp(1,k).^(8/3)) - psi);
+           %end
 
 disp('...')
-% SR_temp = QR_temp.^(3/4);
-% end
 
 QR(1,:) = QR_temp;
 NR(1,:) = NR_temp;
 SR(1,:) = SR_temp;
-
 
 disp('Done')
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -257,11 +248,7 @@ for i = 2:Lt
         %             error 'Lake Emptied!!!!'
     end
     
-  
-    % Define N at the lake
-      
-NL = 0; 
-
+ 
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %%%% Find NR and QR which fit this channel shape and BC's %%%%
@@ -272,21 +259,21 @@ NL = 0;
 
             QR(2,:) = sqrt(psi*(SR(2,Ls)^(8/3)));
 
+        NL = 0; % Define N at the lake
        % for dirichlet BC at start of channel 
-                 NR(2,1) = NL;
+                NR(2,1) = NL;
        % for dirichlet BC at end of channel
-               % NR(2,Ls) = NBottom;
-      %for neumann BC at start of channel 
-              % NR(2,1) = NR(2,2);
-      %for neumann BC at end of channel 
+               %NR(2,Ls) = NBottom;
+       %for neumann BC at start of channel 
+               %NR(2,1) = NR(2,2);
+       %for neumann BC at end of channel 
                NR(2,Ls) = NR(2,Ls-1);
 
              for k = 1:Ls-1
-                 NR(2,k+1) = NR(2,k) + ds/delta * (QR(2,k)*abs(QR(2,k))/(SR(2,k).^(8/3)) - psi);
+                 NR(2,k+1) = NR(2,k) + ds/delta * (QR(2,k)*abs(QR(2,k))/((SR(2,k).^(8/3))) - psi);
              end
-    
-    
-    
+
+
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %%%%%%%%%%%%% Plotting %%%%%%%%%%
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -300,13 +287,13 @@ NL = 0;
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         %         XR = interp1(QR(2,:),s0*s,0);
-        sprintf('%3.3f %% Complete  ',t(i)/T * 100)
+        %sprintf('%3.3f %% Complete  ',t(i)/T * 100)
         %          pause
-        TotalSeconds = t(i)*t0;
-        TotalDays = TotalSeconds/(24*3600);
-        WholeDays = fix(TotalDays)
-        %         disp(WholeDays)
-        disp(datestr(datenum(0,0,0,0,0,TotalSeconds),'HH:MM:SS'))
+%         TotalSeconds = t(i)*t0;
+%         TotalDays = TotalSeconds/(24*3600);
+%         WholeDays = fix(TotalDays)
+%         %         disp(WholeDays)
+%         disp(datestr(datenum(0,0,0,0,0,TotalSeconds),'HH:MM:SS'))
         %         disp(t(i))
         
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

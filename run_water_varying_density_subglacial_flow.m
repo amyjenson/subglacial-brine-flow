@@ -51,11 +51,11 @@ for i = 0:50:200   %salinity in ppt or psu
 
 RunInfo.DateAndTime            = datestr(now);
 RunInfo.InitialLakeDepthDim    = 10;            % Initial lake level
-RunInfo.plots                  = [8 2];      % choose what plots to display (see table above)
+RunInfo.plots                  = [];      % choose what plots to display (see table above)
 RunInfo.PlotPeriod             = 100;             % The interval between plots in time steps - might need to change this
 RunInfo.InitialrGuess          = 0.25;          % this is dimensional radius in meters
 RunInfo.Initialbeta_psu        = i;              % this is the intitial condition on salinity in the channel [psu = ppt]
-RunInfo.VLi                    = 1e+06;         % volume coefficient in lake shape parameterisation
+RunInfo.VLi                    = 1e+07;         % volume coefficient in lake shape parameterisation
 RunInfo.s0                     = 1000;         % channel length scale, need to make the time step smaller if you make the channel length smaller
 RunInfo.channel_geometry       = 1;             % 1 means circular, 1/2 means semi-circular
 RunInfo.slope                  = 3;               % slope of channel and bed in degrees  

@@ -31,7 +31,7 @@ slope_degrees = RunInfo.slope;
 IceThickness = RunInfo.ice_thickness;
 
 hLi = InitialLakeDepthDim; 
-Slope = slope_degrees*pi/180;                            % slope of conduit bottom in radians 
+Slope = slope_degrees*pi/180;                  % slope of conduit bottom in radians 
 InitialSGuess = pi*(InitialrGuess)^2;          % this is dimensional cross-sectional area
 pL = 1;                                        % 1 means box-shaped lake, 2 means wedge, 3 means cone;   
 
@@ -41,11 +41,11 @@ hL_old = NaN; % defining lake depth for previous time step
 P = 1;
 Llo = 1;  
 Lhi = 1;
-if ishandle(999) ==0
-    figure(999);
-    text(0.3,0.5,'Control-click to end simulation','FontSize',18)
-    set(999,'WindowButtonDownFcn',@EndRun);
-end
+%if ishandle(999) ==0
+%    figure(999);
+%    text(0.3,0.5,'Control-click to end simulation','FontSize',18)
+%    set(999,'WindowButtonDownFcn',@EndRun);
+%end
 
 global UserReturn
 UserReturn = 0;
@@ -83,6 +83,11 @@ f = 5.4 * n_full^2;                                % friction factor for a circu
 end
 
 
+Pi = g*rho_i*IceThickness;                           % function for ice-overburden pressure in N/m^2 or Pa 
+p = Pi/100000;                                       % pressure in bars
+sigma_i = 2093;                                     % specific heat of ice J/kg C
+
+
 %Initial properties of brine
 
 % initial density of brine as function of salinity
@@ -94,9 +99,6 @@ Initialbeta = Initialbeta_psu*Initialrho_b/1000; % beta in kg/m^3
 %%%%%%%%%%%% this is for testing brine density!!!
 %Initialrho_b  = 1000;
 %%%%%%%%%%%%
-
-Pi = g*rho_i*IceThickness;                           % function for ice-overburden pressure in N/m^2 or Pa 
-p = Pi/100000;                                       % pressure in bars
 
 % melting point of ice as function of salinity
 theta_hat_salinity = -5.8202*10^(-07)*(Initialbeta_psu)^3 + 1.8653*10^(-06)*Initialbeta_psu^2 + -6.0536*10^(-02)*Initialbeta_psu + 2.5195*10^(-03);
@@ -131,8 +133,6 @@ end
 
 K = 2* A* n^(-n);                                   % ice flow constant from Evatt (2006)
 
-sigma_i = 2093;                         % specific heat of ice J/kg C
-
 % Dimensional model scaling parameters
 hL0  = hLi;                                         % lake depth scale [m] also flotation level
 VL0  = (hL0/hLi)^pL * VLi;                          % lake volume scale [m^3]
@@ -165,12 +165,12 @@ lambda = SR0*s0/(t0*QR0);
 
 % set up space grid
 S_end = 1;
-ds= 1/10;                                           % space step    usually 0.01
+ds= 1/50;                                           % space step    usually 0.01
 s = 0:ds:S_end;                                     % space vector
 Ls = length(s);                                     % number of space steps
 
 dt= ds/(1000);                                      % time step default 0.01 (0.01 in Kingslake)
-T = 500;                                            % dimensionless simulation time default 500
+T = 100;                                            % dimensionless simulation time default 500
 t=0:dt:T;                                           % time vector
 Lt = length(t);                                     % number of time steps
 TSamp = t(1:10:Lt);                                 % set up a sampling time vector
@@ -192,6 +192,7 @@ betaSamp = NaN(length(TSamp),Ls);                 % array for sampling values of
 beta_psuSamp = NaN(length(TSamp),Ls);              % array for sampling values
 theta_hatSamp = NaN(length(TSamp),Ls);             % array for sampling values of the salinity-dependent melting point of ice
 rho_bSamp = NaN(length(TSamp),Ls);  
+psiSamp = NaN(length(TSamp),Ls);
 
 disp('Done')
 
@@ -207,10 +208,9 @@ QR  = zeros(2,Ls);                                  % discharge in channel  [m^3
 beta = zeros(2, Ls);                                % brine concentration
 beta_psu = zeros(2,Ls); 
 theta_hat = zeros(2,Ls);                            % salinity-dependent melting point  
+psi = zeros(2,Ls);   
 
-                         
 disp('Done')
-
 
 % Sampling Counter
 SampNumber = 2;
@@ -222,42 +222,40 @@ disp('Starting Initial Conditions...')
 
 
 %%% define hydraulic potential
-psi = Initialrho_b*g*sin(Slope)/psi0;         % idealised dimensionless hydraulic gradient
+Initialpsi= Initialrho_b*g*sin(Slope)/psi0;         % idealised dimensionless hydraulic gradient
 
 SR_temp(1,:) = ones(1,Ls).*(InitialSGuess/SR0);
 hL(1,1) = InitialLakeDepthDim/hL0;
 
 % Define N at top end
-NL = 0; %BC for effective pressure at lake
-NR(1,1) = NL;
-%define N at bottom
-NBottom = 0;
-NR(1,Ls) = NBottom;
+NR(1,1) = 0; % BC for effective pressure at lake
+%NR(1,Ls) = 0; % BC for effective pressure at channel end
 
 beta_temp(1,:) = ones(1,Ls).*(Initialbeta/beta0);                  % this defines the IC for beta
 beta_psu_temp(1,1:Ls) = ones(1,Ls).*(Initialbeta_psu);
 theta_hat_temp(1,:) = ones(1,Ls).*(Initialtheta_hat/theta0);     
 rho_b_temp(1,:)= ones(1,Ls).*Initialrho_b;
-
+psi_temp = ones(1,Ls).*Initialpsi;
 
  % Boundary Layer Method in section 2.2.5 of Kingslake (2013)
         % initial conditions
 
         % S at far end of channel fixes Q there
-        QR_temp(1,Ls) = sqrt((SR_temp(1,Ls)^(8/3))*psi);
+        QR_temp(1,Ls) = sqrt((SR_temp(1,Ls)^(8/3))*psi_temp(1,Ls));
         % fixes Q for the whole channel
         QR_temp(1,:) = QR_temp(1,Ls);
         
-        %NR_temp = NR(1,1)*(1-s./1);
-        %NR_temp(1:Ls) = NBottom;    
-         NR_temp = NR(1,1);
+        %initial N Guess is important 
+        %NR_temp = NR(1,1)*(1-s./1); %linear gradient from BC at the lake 
+        %NR_temp = NR(1,1);
+        %NR_temp(1,1) = NR(1,1);
+        NR_temp = -s;
  
-%           for k = 1:Ls-1
-%               NR_temp(1,k+1) = NR_temp(1,k) + ds/delta * ( QR_temp(1,k)*abs(QR_temp(1,k))/(SR_temp(1,k).^(8/3)) - psi);
-%           end
+           %for k = 1:Ls-1
+               %NR_temp(1,k+1) = NR_temp(1,k) + ds/delta * ( QR_temp(1,k)*abs(QR_temp(1,k))/(SR_temp(1,k).^(8/3)) - psi_temp(1,k));
+           %end
    
 disp('...')
-
 
 QR(1,:) = QR_temp;
 NR(1,:) = NR_temp;
@@ -265,8 +263,8 @@ SR(1,:) = SR_temp;
 beta(1,:) = beta_temp;
 beta_psu(1,:) = beta_psu_temp;
 theta_hat(1,:) = theta_hat_temp;    
-rho_b(1,:)= rho_b_temp;
-
+rho_b(1,:) = rho_b_temp;
+psi(1,:) = psi_temp;
 
 disp('Done')
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -275,10 +273,6 @@ disp('Done')
 disp('Starting Main Loop...')
 
 for i = 2:Lt
-
-
-%%% define hydraulic potential
-psi = rho_b(1,:)*g*sin(Slope)/psi0;         % idealised dimensionless hydraulic gradient
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %%%% Step Channel Crossection Forward %%%%
@@ -317,34 +311,29 @@ psi = rho_b(1,:)*g*sin(Slope)/psi0;         % idealised dimensionless hydraulic 
         %             error 'Lake Emptied!!!!'
     end
     
-  
-    % Define N at the lake
       
-NL = 0; 
-
-
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %%%% Find NR and QR which fit this channel shape and BC's %%%%
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-
      % Boundary Layer Method
 
-            QR(2,:) = sqrt(psi*(SR(2,Ls)^(8/3)));
+            QR(2,:) = sqrt(psi(1,Ls)*(SR(2,Ls)^(8/3)));
 
-       % for dirichlet BC at start of channel 
-                 NR(2,1) = NL;
-       % for dirichlet BC at end of channel
-               % NR(2,Ls) = NBottom;
+      % for dirichlet BC at start of channel 
+               NR(2,1) = 0;
+      % for dirichlet BC at end of channel
+               %NR(2,Ls) = 0;
       %for neumann BC at start of channel 
               % NR(2,1) = NR(2,2);
       %for neumann BC at end of channel 
                NR(2,Ls) = NR(2,Ls-1);
 
-       for k = 1:Ls-1
-            NR(2,k+1) = NR(2,k) + ((ds/delta)*(QR(2,k)*abs(QR(2,k))/(SR(2,k)^(8/3)) - psi(k)));
-       end
-    
+        for k = 1:Ls-1
+             NR(2,k+1) = NR(2,k) + (ds/delta)*(QR(2,k)*abs(QR(2,k))/(SR(2,k)^(8/3)) - psi(1,k));
+        end     
+
+        %NR(2,:) = 0;
     
     
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -359,10 +348,7 @@ NL = 0;
     
        beta(2,2:Ls) = beta(1,2:Ls) - dt*((beta(1,2:Ls) ./ SR(2,2:Ls)).* ((SR(2,2:Ls) - SR(1,2:Ls))/dt) ...
               + (QR(2,2:Ls)./(lambda * SR(2,2:Ls))).*((beta(1,2:Ls)-beta(1,1:Ls-1))/ds));
-       
-       % define boundary condition at the end of the channel 
-       %beta(2,Ls) = beta(2,Ls-1);
-
+    
       
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     % used for testing influence of brine but can be left
@@ -384,10 +370,11 @@ NL = 0;
     % density of brine as function of salinity and pressure 
     rho_b(2,:)  = (9.9780*10^(-10)*beta_psu(2,:).^3 + 5.5328*10^(-08)*beta_psu(2,:).^2 + 7.6346*10^(-04)*beta_psu(2,:) + 9.9984*10^(-01))*(1000); % density of brine kg/m^3
 
-
     %%%%%%%%%%%%%%%%%this is for testing denisty!!!
     %rho_b(2,:) = 1000;
      %%%%%%%%%%%%%%%%
+
+    psi(2,:) = rho_b(2,:)*g*sin(Slope)/psi0;         % idealised dimensionless hydraulic gradient
 
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -402,12 +389,12 @@ NL = 0;
    %%%% Calculate day, hours, min, secs. and display %%%%%%%%%
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-        sprintf('%3.3f %% Complete  ',t(i)/T * 100)
-        TotalSeconds = t(i)*t0;
-        TotalDays = TotalSeconds/(24*3600);
-        WholeDays = fix(TotalDays)
+        %sprintf('%3.3f %% Complete  ',t(i)/T * 100)
+        %TotalSeconds = t(i)*t0;
+        %TotalDays = TotalSeconds/(24*3600);
+        %WholeDays = fix(TotalDays)
         %         disp(WholeDays)
-        disp(datestr(datenum(0,0,0,0,0,TotalSeconds),'HH:MM:SS'))
+        %disp(datestr(datenum(0,0,0,0,0,TotalSeconds),'HH:MM:SS'))
         %         disp(t(i))
         
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -576,7 +563,7 @@ NL = 0;
             plot(s*s0,beta_psu(2,1:Ls),'o')
             %       axis([0 1 -3 1])
             title 'Brine concentration along-channel profile'
-            pause(0.000001)
+            pause(10)
         end
  
          % melting point profile
@@ -620,6 +607,7 @@ NL = 0;
         theta_hatSamp(SampNumber,:) = theta_hat(2,:);
         beta_psuSamp(SampNumber,:) = beta_psu(2,:);
         rho_bSamp(SampNumber,:) = rho_b(2,:);
+        psiSamp(SampNumber,:) = psi(2,:);
 
         SampNumber = SampNumber + 1;
 
@@ -708,6 +696,7 @@ output.s0 = s0;
 output.dt = dt;
 output.ds = ds;
 output.s = s;
+output.psi = psiSamp;
 output.NR = NRSamp;
 output.N0 = N0;
 
@@ -725,6 +714,7 @@ output.N0 = N0;
     theta_hat(1,:) = theta_hat(2,:);
     beta_psu(1,:) = beta_psu(2,:);
     rho_b(1,:) = rho_b(2,:);
+    psi(1,:) = psi(2,:); 
 
     % wipe old values
     hL(2,1) = 0;
@@ -736,6 +726,7 @@ output.N0 = N0;
     theta_hat(2,:) = 0;
     beta_psu(2,:) = 0;
     rho_b(2,:) = 0;
+    psi(2,:) = 0;
 
      %%%%%%%%%%%%%%%%%%%%
      %%%  PAUSE CODE  %%%

@@ -59,8 +59,8 @@ RunInfo.channel_geometry       = 1;             % 1 means circular, 1/2 means se
 RunInfo.slope                  = 3;             % slope of channel and bed in degrees  
 RunInfo.ice_thickness          = 100;           % ice thickness above channel
 
-output = subglacial_brine_flow(RunInfo);
+output = density_subglacial_brine_flow(RunInfo);
 
-mkdir(['DIC_model/simulations/brine/H=' num2str(RunInfo.ice_thickness) '/channel_geometry=' num2str(RunInfo.channel_geometry) '/slope=' num2str(RunInfo.slope)  '/VLi=' num2str(RunInfo.VLi) '/InitialLakeDepth=' num2str(RunInfo.InitialLakeDepthDim) '/s0=' num2str(RunInfo.s0) '/radius=' num2str(RunInfo.InitialrGuess) '/']);           
-save(['DIC_model/simulations/brine/H=' num2str(RunInfo.ice_thickness) '/channel_geometry=' num2str(RunInfo.channel_geometry) '/slope=' num2str(RunInfo.slope) '/VLi=' num2str(RunInfo.VLi) '/InitialLakeDepth=' num2str(RunInfo.InitialLakeDepthDim) '/s0=' num2str(RunInfo.s0) '/radius=' num2str(RunInfo.InitialrGuess) '/salinity=' num2str(RunInfo.Initialbeta_psu) '___.mat'],'output'); 
+mkdir(['DIC_model/simulations/brine_constant_density/H=' num2str(RunInfo.ice_thickness) '/channel_geometry=0.5//brine/H=' num2str(RunInfo.ice_thickness) '/channel_geometry=' num2str(RunInfo.channel_geometry) '/slope=' num2str(RunInfo.slope)  '/VLi=' num2str(RunInfo.VLi) '/InitialLakeDepth=' num2str(RunInfo.InitialLakeDepthDim) '/s0=' num2str(RunInfo.s0) '/radius=' num2str(RunInfo.InitialrGuess) '/']);           
+save(['DIC_model/simulations/brine_constant_density/H=' num2str(RunInfo.ice_thickness) '/channel_geometry=' num2str(RunInfo.channel_geometry) '/slope=' num2str(RunInfo.slope) '/VLi=' num2str(RunInfo.VLi) '/InitialLakeDepth=' num2str(RunInfo.InitialLakeDepthDim) '/s0=' num2str(RunInfo.s0) '/radius=' num2str(RunInfo.InitialrGuess) '/salinity=' num2str(RunInfo.Initialbeta_psu) '___.mat'],'output'); 
 end

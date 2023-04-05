@@ -49,18 +49,18 @@ for i = 100 %0:50:200   %salinity in ppt or psu
 
 RunInfo.DateAndTime            = datestr(now);
 RunInfo.InitialLakeDepthDim    = 10;            % Initial lake level
-RunInfo.plots                  = [3];      % choose what plots to display (see table above)
+RunInfo.plots                  = [2];            % choose what plots to display (see table above)
 RunInfo.PlotPeriod             = 100;           % The interval between plots in time steps - might need to change this
 RunInfo.InitialrGuess          = 0.25;          % this is dimensional initial radius of channel
-RunInfo.Initialbeta_psu        = i;              % this is the intitial condition on salinity in the channel [psu = ppt]
+RunInfo.Initialbeta_psu        = i;             % this is the intitial condition on salinity in the channel [psu = ppt]
 RunInfo.VLi                    = 1e+06;         % volume coefficient in lake shape parameterisation
-RunInfo.s0                     = 1000;         % channel length scale
+RunInfo.s0                     = 1000;          % channel length scale
 RunInfo.channel_geometry       = 1;             % 1 means circular, 1/2 means semi-circular
 RunInfo.slope                  = 3;               % slope of channel and bed in degrees  
 RunInfo.ice_thickness          = 100;             % ice thickness above channel
 
 output = temp_subglacial_brine_flow(RunInfo);
 
-mkdir(['DIC_model/simulations/temp/channel_geometry=' num2str(RunInfo.channel_geometry) '/slope=' num2str(RunInfo.slope)  '/VLi=' num2str(RunInfo.VLi) '/InitialLakeDepth=' num2str(RunInfo.InitialLakeDepthDim) '/s0=' num2str(RunInfo.s0) '/radius=' num2str(RunInfo.InitialrGuess) '/']);           
-save(['DIC_model/simulations/temp/channel_geometry=' num2str(RunInfo.channel_geometry) '/slope=' num2str(RunInfo.slope) '/VLi=' num2str(RunInfo.VLi) '/InitialLakeDepth=' num2str(RunInfo.InitialLakeDepthDim) '/s0=' num2str(RunInfo.s0) '/radius=' num2str(RunInfo.InitialrGuess) '/salinity=' num2str(RunInfo.Initialbeta_psu) '___.mat'],'output', '-v7.3'); 
+mkdir(['DIC_model/simulations/temp/H=' num2str(RunInfo.ice_thickness)  '/channel_geometry=' num2str(RunInfo.channel_geometry) '/slope=' num2str(RunInfo.slope)  '/VLi=' num2str(RunInfo.VLi) '/InitialLakeDepth=' num2str(RunInfo.InitialLakeDepthDim) '/s0=' num2str(RunInfo.s0) '/radius=' num2str(RunInfo.InitialrGuess) '/']);           
+save(['DIC_model/simulations/temp/H=' num2str(RunInfo.ice_thickness) '/channel_geometry=' num2str(RunInfo.channel_geometry) '/slope=' num2str(RunInfo.slope) '/VLi=' num2str(RunInfo.VLi) '/InitialLakeDepth=' num2str(RunInfo.InitialLakeDepthDim) '/s0=' num2str(RunInfo.s0) '/radius=' num2str(RunInfo.InitialrGuess) '/salinity=' num2str(RunInfo.Initialbeta_psu) '___.mat'],'output', '-v7.3'); 
 end
